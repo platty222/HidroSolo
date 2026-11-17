@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HidroSolo: Sistema de Irrigação Automatizada por Monitoramento de Umidade do Solo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%232d6a4f' d='M12 2S5 10 5 15a7 7 0 0 0 14 0C19 10 12 2 12 2z'/%3E%3C/svg%3E">
+<style>
+  :root, [data-tema="verde"] {
+    --bg:#f3f5f0; --panel:#ffffff; --ink:#1a251e; --muted:#657469; --line:#dde3d8;
+    --brand:#2d6a4f; --onbrand:#ffffff; --water:#2b7a9b; --warn:#b7791f;
+  }
+  [data-tema="oceano"] { --bg:#f0f4f7; --panel:#fff; --ink:#14232f; --muted:#5f7382; --line:#d8e2e9; --brand:#1d5f8a; --onbrand:#fff; --water:#2a8fb5; --warn:#b7791f; }
+  [data-tema="terra"]  { --bg:#f6f2ec; --panel:#fffdf9; --ink:#2b221a; --muted:#7a6a5a; --line:#e6ddd0; --brand:#8a4b2a; --onbrand:#fff; --water:#3a7d92; --warn:#a8741a; }
+  [data-tema="grafite"]{ --bg:#121618; --panel:#1b2124; --ink:#e8edeb; --muted:#8b9994; --line:#2a3337; --brand:#7cc49a; --onbrand:#0f1a14; --water:#5fb0d1; --warn:#e0b050; }
+  [data-tema="noite"]  { --bg:#0e1621; --panel:#162131; --ink:#e7eef7; --muted:#8999b0; --line:#24344a; --brand:#6ab0ff; --onbrand:#08121f; --water:#4cc3d9; --warn:#e0b050; }
+
+  :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  * { box-sizing: border-box; margin: 0; }
+  html { color-scheme: light dark; }
+  body {
+    background: var(--bg); color: var(--ink); min-height: 100vh;
+    font: 15px/1.5 "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums; transition: background .4s, color .4s;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px 48px; }
+
+  /* Cabeçalho */
+  .topo { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 22px 0; }
+  .marca { display: flex; align-items: center; gap: 12px; }
+  .marca svg { width: 26px; height: 26px; fill: var(--brand); transition: fill .4s; }
+  .marca b { display: block; font-size: 1.15rem; letter-spacing: -.01em; line-height: 1.1; }
+  .marca span { font-size: .82rem; color: var(--muted); }
+  .acoes { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .conexao { display: flex; align-items: center; gap: 8px; font-size: .88rem; color: var(--muted); padding-right: 6px; }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background .3s; }
+  .led.on { background: var(--brand); animation: respira 2.4s ease-in-out infinite; }
+  @keyframes respira { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 22%, transparent); } }
+
+  .btn { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 9px 16px; font-weight: 600; font-size: .92rem; transition: border-color .2s, background .2s, transform .1s; }
+  .btn:hover:not(:disabled) { border-color: var(--brand); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn.pri { background: var(--brand); border-color: var(--brand); color: var(--onbrand); }
+  .btn.pri:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn.agua { background: var(--water); border-color: var(--water); color: #fff; }
+  .btn.leve { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .aviso { background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: .9rem; }
+
+  /* Grade e painéis */
+  .grade { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; }
+  .painel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; transition: background .4s, border-color .4s; }
+  .painel + .painel, .grade + .painel { margin-top: 16px; }
+  .grade .painel + .painel { margin-top: 0; }
+  .titulo { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+  h2 { font-size: 1rem; font-weight: 650; letter-spacing: -.005em; }
+  .nota { font-size: .86rem; color: var(--muted); }
+  .nota b { color: var(--ink); font-weight: 600; }
+
+  .entra { opacity: 0; transform: translateY(10px); animation: entra .55s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: var(--d, 0s); }
+  @keyframes entra { to { opacity: 1; transform: none; } }
+
+  /* Medidor */
+  .medidor { width: 100%; max-width: 420px; display: block; margin: 4px auto 0; transition: opacity .4s; }
+  body.off .medidor { opacity: .4; }
+  .medidor .trilha { fill: none; stroke: var(--line); stroke-width: 14; transition: stroke .4s; }
+  .medidor .prog { fill: none; stroke: var(--water); stroke-width: 14; stroke-linecap: round; transition: stroke-dasharray 1s cubic-bezier(.3,.8,.3,1), stroke .4s; }
+  .medidor .zona { fill: none; stroke-width: 6; }
+  .medidor text { fill: var(--muted); font-size: 11px; text-anchor: middle; }
+  .medidor .gnum { fill: var(--ink); font-size: 54px; font-weight: 650; letter-spacing: -.03em; }
+  .medidor .gleg { font-size: 12px; }
+  .legenda { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; font-size: .8rem; color: var(--muted); margin: 6px 0 2px; }
+  .legenda i { display: inline-block; width: 10px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .situacao { text-align: center; font-size: 1.02rem; margin: 10px 0 18px; min-height: 1.5em; }
+  .situacao.troca { animation: troca .4s ease; }
+  @keyframes troca { from { opacity: 0; transform: translateY(4px); } }
+
+  .resumo { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); padding-top: 16px; }
+  .resumo div { padding: 0 14px; border-left: 1px solid var(--line); }
+  .resumo div:first-child { border-left: 0; padding-left: 0; }
+  .resumo span { display: block; font-size: .8rem; color: var(--muted); }
+  .resumo strong { font-size: 1.05rem; font-weight: 650; display: inline-block; }
+  .pop { animation: pop .4s ease; }
+  @keyframes pop { 40% { color: var(--brand); transform: translateY(-2px); } }
+
+  /* Controle */
+  .linha { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+  .linha:first-of-type { border-top: 0; padding-top: 0; }
+  .linha strong { display: block; font-weight: 600; }
+  .linha span.d { font-size: .84rem; color: var(--muted); }
+  .sw { position: relative; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; flex: none; }
+  .sw input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .sw .tr { width: 44px; height: 24px; border-radius: 12px; background: var(--line); position: relative; transition: background .25s; }
+  .sw .tr::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--panel); box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .25s cubic-bezier(.3,1.4,.5,1); }
+  .sw input:checked + .tr { background: var(--brand); }
+  .sw input:checked + .tr::after { transform: translateX(20px); }
+  .sw input:focus-visible + .tr { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .sw input:disabled { cursor: not-allowed; }
+  .sw input:disabled + .tr { opacity: .45; }
+  .sw em { font-style: normal; font-size: .85rem; color: var(--muted); min-width: 68px; }
+
+  .bomba { margin-top: 4px; display: flex; flex-direction: column; gap: 12px; }
+  .bomba .btn { width: 100%; padding: 12px; }
+  .fluxo { display: flex; align-items: center; gap: 10px; font-size: .84rem; color: var(--muted); }
+  .fluxo svg { flex: 1; height: 8px; }
+  .fluxo line { stroke: var(--line); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 2 8; transition: stroke .3s; }
+  .fluxo.on line { stroke: var(--water); animation: corre .6s linear infinite; }
+  @keyframes corre { to { stroke-dashoffset: -10; } }
+  .info { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 6px; font-size: .86rem; }
+  .info div { display: flex; justify-content: space-between; }
+  .info span { color: var(--muted); }
+
+  /* Plantas */
+  .lista { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .lp {
+    display: grid; grid-template-columns: 22px minmax(120px, 1.1fr) minmax(140px, 2fr) 76px 92px; gap: 14px; align-items: center;
+    text-align: left; width: 100%; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 14px 16px;
+    transition: background .2s; position: relative;
+  }
+  .lp:first-child { border-top: 0; }
+  .lp:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 6%, var(--panel)); }
+  .lp:disabled { cursor: not-allowed; opacity: .6; }
+  .lp::before { content: ""; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); transition: border-color .2s, box-shadow .2s; }
+  .lp[aria-checked="true"] { background: color-mix(in srgb, var(--brand) 9%, var(--panel)); }
+  .lp[aria-checked="true"]::before { border-color: var(--brand); box-shadow: inset 0 0 0 3px var(--panel), inset 0 0 0 8px var(--brand); }
+  .lp .n strong { display: block; font-weight: 600; }
+  .lp .n small { color: var(--muted); font-size: .82rem; }
+  .lp .v { font-weight: 600; }
+  .lp .m { color: var(--muted); font-size: .86rem; }
+  .escala { position: relative; height: 8px; border-radius: 4px; background: var(--line); }
+  .escala .alvo { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: color-mix(in srgb, var(--brand) 55%, var(--line)); transition: background .3s; }
+  .lp[aria-checked="true"] .alvo { background: var(--brand); }
+  .escala .marca-atual { position: absolute; top: -4px; width: 3px; height: 16px; border-radius: 2px; background: var(--ink); left: 0; opacity: 0; transition: left 1s cubic-bezier(.3,.8,.3,1), opacity .3s; }
+  .lp[aria-checked="true"] .marca-atual { opacity: 1; }
+
+  /* Gráfico */
+  .grafico svg { width: 100%; height: auto; display: block; }
+  .grafico text { fill: var(--muted); font-size: 11px; }
+  .grafico .grade-y { stroke: var(--line); stroke-width: 1; }
+  .grafico .faixa { fill: var(--brand); opacity: .1; transition: y .4s, height .4s; }
+  .grafico .area { fill: var(--water); opacity: .12; }
+  .grafico .curva { fill: none; stroke: var(--water); stroke-width: 2; stroke-linejoin: round; }
+  .grafico .ponta { fill: var(--water); }
+
+  /* Rodapé / temas */
+  .rodape { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+  .temas { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .tema { display: inline-flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px 6px 7px; font-size: .86rem; transition: border-color .2s; }
+  .tema:hover { border-color: var(--muted); }
+  .tema[aria-pressed="true"] { border-color: var(--brand); }
+  .tema i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(128,128,128,.35); }
+
+  .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 24px); opacity: 0; background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 8px; font-size: .9rem; transition: transform .3s, opacity .3s; pointer-events: none; z-index: 5; max-width: 90vw; text-align: center; }
+  .toast.mostra { transform: translate(-50%, 0); opacity: 1; }
+
+  @media (max-width: 820px) {
+    .grade { grid-template-columns: 1fr; }
+    .lp { grid-template-columns: 22px 1fr auto; row-gap: 10px; }
+    .lp .escala { grid-column: 2 / 4; grid-row: 2; }
+    .lp .m { grid-column: 2; grid-row: 3; margin-top: -4px; }
+    .lp .v { grid-column: 3; grid-row: 1; }
+  }
+  @media (max-width: 520px) { .wrap { padding: 0 14px 40px; } .painel { padding: 18px; } .resumo div { padding: 0 8px; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .entra { opacity: 1; transform: none; } }
+</style>
+</head>
+<body data-tema="verde">
+<div class="wrap">
+
+  <header class="topo entra">
+    <div class="marca">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2S5 10 5 15a7 7 0 0 0 14 0C19 10 12 2 12 2z"/></svg>
+      <div><b>HidroSolo</b><span>Sistema de irrigação automatizada por monitoramento de umidade do solo</span></div>
+    </div>
+    <div class="acoes">
+      <span class="conexao"><span class="led" id="led"></span><span id="estadoTxt">Desconectado</span></span>
+      <button class="btn leve" id="btnDemo">Ver demonstração</button>
+      <button class="btn pri" id="btnConectar">Conectar Arduino</button>
+    </div>
+  </header>
+
+  <p class="aviso" id="avisoNavegador" hidden>Este navegador não consegue acessar a porta USB. Abra o site no Chrome ou no Edge, no computador.</p>
+
+  <div class="grade">
+    <section class="painel entra" style="--d:.08s" aria-labelledby="h-umidade">
+      <div class="titulo"><h2 id="h-umidade">Umidade do solo</h2><span class="nota" id="notaLeitura">Sem leitura</span></div>
+      <svg class="medidor" id="medidor" viewBox="0 0 300 176" role="img" aria-label="Medidor de umidade do solo">
+        <path id="zSeco" class="zona" stroke="var(--warn)"/>
+        <path id="zIdeal" class="zona" stroke="var(--brand)"/>
+        <path id="zUmido" class="zona" stroke="var(--water)" opacity=".55"/>
+        <path id="trilha" class="trilha"/>
+        <path id="prog" class="prog" pathLength="100" style="stroke-dasharray: 0 100"/>
+        <text x="26" y="170">0</text><text x="274" y="170">100</text>
+        <text class="gnum" id="gNum" x="150" y="130">--</text>
+        <text class="gleg" x="150" y="152">% de umidade</text>
+      </svg>
+      <div class="legenda">
+        <span><i style="background:var(--warn)"></i>Seco</span>
+        <span><i style="background:var(--brand)"></i>Faixa ideal</span>
+        <span><i style="background:var(--water);opacity:.6"></i>Úmido</span>
+      </div>
+      <p class="situacao" id="situacao">Conecte o Arduino para ver a leitura.</p>
+      <div class="resumo">
+        <div><span>Planta</span><strong id="dPlanta">--</strong></div>
+        <div><span>Rega abaixo de</span><strong id="dMin">--</strong></div>
+        <div><span>Para de regar em</span><strong id="dMax">--</strong></div>
+      </div>
+    </section>
+
+    <section class="painel entra" style="--d:.16s" aria-labelledby="h-sistema">
+      <div class="titulo"><h2 id="h-sistema">Sistema</h2></div>
+      <div class="linha">
+        <div><strong>Irrigador</strong><span class="d">Desligado, a bomba fica parada.</span></div>
+        <label class="sw"><input type="checkbox" id="chkPower" disabled><span class="tr"></span><em id="txtPower">Desligado</em></label>
+      </div>
+      <div class="linha">
+        <div><strong>Rega automática</strong><span class="d">Rega sozinho seguindo a planta.</span></div>
+        <label class="sw"><input type="checkbox" id="chkAuto" disabled><span class="tr"></span><em id="txtAuto">Desligada</em></label>
+      </div>
+      <div class="bomba">
+        <div class="fluxo" id="fluxo"><span>Bomba</span><svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><line x1="2" y1="4" x2="98" y2="4"/></svg><span id="dBomba">Parada</span></div>
+        <button class="btn pri" id="btnBomba" disabled>Regar agora</button>
+      </div>
+      <div class="info">
+        <div><span>Próxima rega possível</span><strong id="dProx">--</strong></div>
+        <div><span>Leitura bruta do sensor</span><strong id="dRaw">--</strong></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="painel entra" style="--d:.24s" aria-labelledby="h-planta">
+    <div class="titulo"><h2 id="h-planta">Tipo de planta</h2><span class="nota" id="subPlanta">O Arduino segue o modo escolhido.</span></div>
+    <div class="lista" id="plantas" role="radiogroup" aria-labelledby="h-planta"></div>
+  </section>
+
+  <section class="painel entra grafico" style="--d:.32s" aria-labelledby="h-hist">
+    <div class="titulo"><h2 id="h-hist">Histórico</h2><span class="nota">Últimos 2 minutos. A faixa verde é o ideal da planta.</span></div>
+    <svg viewBox="0 0 640 210" role="img" aria-label="Gráfico da umidade nos últimos minutos">
+      <g id="gGrade"></g>
+      <rect class="faixa" id="gFaixa" x="40" y="0" width="596" height="0"/>
+      <path class="area" id="gArea" d=""/>
+      <path class="curva" id="gLinha" d=""/>
+      <circle class="ponta" id="gPonta" r="4" cx="-20" cy="0"/>
+      <text x="40" y="204">há 2 min</text><text x="636" y="204" text-anchor="end">agora</text>
+    </svg>
+  </section>
+
+  <footer class="rodape entra" style="--d:.4s">
+    <div class="temas" id="temas" role="group" aria-label="Tema de cores"></div>
+    <span class="nota">Conecte pelo Chrome ou Edge, com o Monitor Serial da IDE fechado.</span>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const PLANTAS = [
+  { nome: "Cacto",      dica: "Solo quase seco",       min: 15, max: 30, inter: "a cada 6 h" },
+  { nome: "Samambaia",  dica: "Sempre úmida",          min: 60, max: 80, inter: "a cada 30 min" },
+  { nome: "Manjericão", dica: "Úmida, sem encharcar",  min: 45, max: 70, inter: "a cada 1 h" },
+  { nome: "Orquídea",   dica: "Rega espaçada",         min: 35, max: 55, inter: "a cada 2 h" },
+  { nome: "Hortaliças", dica: "Rega frequente",        min: 50, max: 75, inter: "a cada 45 min" },
+];
+const TEMAS = [
+  { id: "verde",   nome: "Verde",   c: ["#f3f5f0", "#2d6a4f"] },
+  { id: "oceano",  nome: "Oceano",  c: ["#f0f4f7", "#1d5f8a"] },
+  { id: "terra",   nome: "Terra",   c: ["#f6f2ec", "#8a4b2a"] },
+  { id: "grafite", nome: "Grafite", c: ["#121618", "#7cc49a"] },
+  { id: "noite",   nome: "Noite",   c: ["#0e1621", "#6ab0ff"] },
+];
+
+const $ = id => document.getElementById(id);
+let porta = null, escritor = null, demo = null, conectado = false;
+let estado = { u: 0, s: 1, b: 0, a: 1, p: 2, min: 45, max: 70, prox: 0, raw: 0 };
+let anterior = {};
+const historico = [];
+
+/* ----- utilidades ----- */
+let toastT;
+function aviso(txt) { const t = $("toast"); t.textContent = txt; t.classList.add("mostra"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("mostra"), 2000); }
+function salvarCfg(o) { try { const c = JSON.parse(localStorage.getItem("irrigador-cfg") || "{}"); localStorage.setItem("irrigador-cfg", JSON.stringify({ ...c, ...o })); } catch (e) {} }
+function lerCfg() { try { return JSON.parse(localStorage.getItem("irrigador-cfg") || "{}"); } catch (e) { return {}; } }
+function tempo(s) { if (s <= 0) return "agora"; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${Math.max(m, 1)} min`; }
+function pulsar(id, v) { const el = $(id); if (el.textContent !== String(v)) { el.textContent = v; el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop"); } }
+
+/* ----- temas ----- */
+function aplicarTema(id) {
+  document.body.dataset.tema = id;
+  try { localStorage.setItem("irrigador-tema", id); } catch (e) {}
+  document.querySelectorAll(".tema").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === id));
+}
+TEMAS.forEach(t => {
+  const b = document.createElement("button");
+  b.className = "tema"; b.dataset.id = t.id;
+  b.innerHTML = `<i style="background:linear-gradient(135deg,${t.c[0]} 50%,${t.c[1]} 50%)"></i>${t.nome}`;
+  b.onclick = () => aplicarTema(t.id);
+  $("temas").appendChild(b);
+});
+let tema = null;
+try { tema = localStorage.getItem("irrigador-tema"); } catch (e) {}
+aplicarTema(tema || (matchMedia("(prefers-color-scheme: dark)").matches ? "grafite" : "verde"));
+
+/* ----- medidor ----- */
+const CX = 150, CY = 150;
+const pt = (f, r) => [CX - r * Math.cos(Math.PI * f), CY - r * Math.sin(Math.PI * f)];
+function arco(f1, f2, r) {
+  const [x1, y1] = pt(f1, r), [x2, y2] = pt(f2, r);
+  return `M${x1.toFixed(1)} ${y1.toFixed(1)}A${r} ${r} 0 ${f2 - f1 > .5 ? 1 : 0} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+}
+$("trilha").setAttribute("d", arco(0, 1, 104));
+$("prog").setAttribute("d", arco(0, 1, 104));
+
+let numMostrado = 0, numToken = 0;
+function animarNumero(para) {
+  const de = numMostrado, t0 = performance.now(), tk = ++numToken;
+  (function f(t) {
+    if (tk !== numToken) return;
+    const k = Math.min(1, (t - t0) / 900), e = 1 - Math.pow(1 - k, 3);
+    numMostrado = Math.round(de + (para - de) * e);
+    $("gNum").textContent = numMostrado;
+    if (k < 1) requestAnimationFrame(f);
+  })(t0);
+}
+
+/* ----- lista de plantas ----- */
+PLANTAS.forEach((p, i) => {
+  const b = document.createElement("button");
+  b.className = "lp"; b.dataset.i = i; b.disabled = true; b.setAttribute("role", "radio");
+  b.innerHTML = `<span class="n"><strong>${p.nome}</strong><small>${p.dica}</small></span>
+    <span class="escala"><i class="alvo" style="left:${p.min}%;width:${p.max - p.min}%"></i><i class="marca-atual"></i></span>
+    <span class="v">${p.min}–${p.max}%</span><span class="m">${p.inter}</span>`;
+  b.onclick = () => { salvarCfg({ p: i }); enviar("P" + i); aviso(`Modo ${p.nome} enviado ao Arduino`); };
+  $("plantas").appendChild(b);
+});
+
+/* ----- desenho ----- */
+function desenhar() {
+  const e = estado, pl = PLANTAS[e.p] || PLANTAS[0], lig = !!e.s;
+  document.body.classList.toggle("off", conectado && !lig);
+
+  if (anterior.u !== e.u) animarNumero(e.u);
+  $("prog").style.strokeDasharray = `${e.u} 100`;
+  $("zSeco").setAttribute("d", e.min > 0 ? arco(0, e.min / 100, 124) : "");
+  $("zIdeal").setAttribute("d", arco(e.min / 100, e.max / 100, 124));
+  $("zUmido").setAttribute("d", e.max < 100 ? arco(e.max / 100, 1, 124) : "");
+  $("notaLeitura").textContent = conectado ? "Atualiza a cada segundo" : "Sem leitura";
+
+  let msg;
+  if (!conectado) msg = "Conecte o Arduino para ver a leitura.";
+  else if (!lig) msg = "Irrigador <b>desligado</b>. A bomba está parada.";
+  else if (e.b) msg = "<b>Regando</b> agora.";
+  else if (e.u < e.min) msg = e.a ? (e.prox > 0 ? "Solo seco. <b>Aguardando</b> o intervalo mínimo entre regas." : "Solo seco. <b>Vai regar</b> em instantes.") : "Solo seco. A rega automática está desligada.";
+  else if (e.u > e.max) msg = "Solo <b>bem úmido</b>. Nada a fazer.";
+  else msg = "Umidade <b>dentro da faixa ideal</b> para " + pl.nome.toLowerCase() + ".";
+  const sit = $("situacao");
+  if (sit.dataset.m !== msg) { sit.innerHTML = msg; sit.dataset.m = msg; sit.classList.remove("troca"); void sit.offsetWidth; sit.classList.add("troca"); }
+
+  pulsar("dPlanta", pl.nome); pulsar("dMin", e.min + "%"); pulsar("dMax", e.max + "%");
+  $("dBomba").textContent = e.b ? "Regando" : "Parada";
+  $("fluxo").classList.toggle("on", !!e.b && lig);
+  $("dProx").textContent = conectado ? tempo(e.prox) : "--";
+  $("dRaw").textContent = conectado ? e.raw : "--";
+
+  $("chkPower").checked = lig; $("chkPower").disabled = !conectado; $("txtPower").textContent = lig ? "Ligado" : "Desligado";
+  $("chkAuto").checked = !!e.a; $("chkAuto").disabled = !conectado || !lig; $("txtAuto").textContent = e.a ? "Ligada" : "Desligada";
+  const bb = $("btnBomba");
+  bb.disabled = !conectado || !lig;
+  bb.textContent = e.b ? "Parar rega" : "Regar agora";
+  bb.classList.toggle("agua", !!e.b);
+
+  document.querySelectorAll(".lp").forEach(b => {
+    const i = +b.dataset.i;
+    b.disabled = !conectado;
+    b.setAttribute("aria-checked", i === e.p);
+    b.querySelector(".marca-atual").style.left = `calc(${e.u}% - 1.5px)`;
+  });
+  $("subPlanta").innerHTML = conectado ? `Seguindo <b>${pl.nome}</b>: rega abaixo de ${e.min}% e para em ${e.max}%.` : "O Arduino segue o modo escolhido.";
+
+  desenharGrafico();
+  anterior = { ...e };
+}
+
+function desenharGrafico() {
+  const X0 = 40, X1 = 636, Y0 = 10, H = 170, N = 120, e = estado;
+  const y = v => Y0 + H - v * H / 100;
+  if (!$("gGrade").children.length) {
+    $("gGrade").innerHTML = [0, 25, 50, 75, 100].map(v => `<line class="grade-y" x1="${X0}" x2="${X1}" y1="${y(v)}" y2="${y(v)}"/><text x="32" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("");
+  }
+  $("gFaixa").setAttribute("y", y(e.max)); $("gFaixa").setAttribute("height", (e.max - e.min) * H / 100);
+  const h = historico.slice(-N), passo = (X1 - X0) / (N - 1);
+  if (!h.length) { $("gLinha").setAttribute("d", ""); $("gArea").setAttribute("d", ""); return; }
+  const pts = h.map((v, i) => [X1 - (h.length - 1 - i) * passo, y(v)]);
+  const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join("");
+  $("gLinha").setAttribute("d", d);
+  $("gArea").setAttribute("d", d + `L${X1} ${y(0)}L${pts[0][0].toFixed(1)} ${y(0)}Z`);
+  const u = pts[pts.length - 1];
+  $("gPonta").setAttribute("cx", u[0]); $("gPonta").setAttribute("cy", u[1]);
+}
+
+function receber(o) {
+  estado = { ...estado, ...o };
+  historico.push(o.u);
+  if (historico.length > 600) historico.shift();
+  desenhar();
+}
+function status(txt, on) {
+  conectado = on;
+  $("estadoTxt").textContent = txt;
+  $("led").classList.toggle("on", on);
+  $("btnConectar").textContent = porta ? "Desconectar" : "Conectar Arduino";
+  desenhar();
+}
+
+/* ----- comandos ----- */
+async function enviar(cmd) {
+  if (demo) { comandoDemo(cmd); return; }
+  if (!escritor) return;
+  try { await escritor.write(cmd + "\n"); } catch (e) { status("Erro ao enviar comando", false); }
+}
+$("chkPower").onchange = ev => { const v = ev.target.checked ? 1 : 0; salvarCfg({ s: v }); enviar("S" + v); aviso(v ? "Irrigador ligado" : "Irrigador desligado"); };
+$("chkAuto").onchange = ev => { const v = ev.target.checked ? 1 : 0; salvarCfg({ a: v }); enviar("A" + v); aviso(v ? "Rega automática ligada" : "Rega automática desligada"); };
+$("btnBomba").onclick = () => enviar("B" + (estado.b ? 0 : 1));
+
+/* ----- USB (Web Serial) ----- */
+async function conectar() {
+  if (!("serial" in navigator)) { $("avisoNavegador").hidden = false; return; }
+  try {
+    porta = await navigator.serial.requestPort();
+    await porta.open({ baudRate: 9600 });
+    const enc = new TextEncoderStream();
+    enc.readable.pipeTo(porta.writable);
+    escritor = enc.writable.getWriter();
+    status("Conectado", true);
+    lerLinhas();
+    setTimeout(() => { // o Uno reinicia ao conectar: reenvia as últimas escolhas
+      const c = lerCfg();
+      if (c.p !== undefined) enviar("P" + c.p);
+      if (c.a !== undefined) enviar("A" + c.a);
+      if (c.s !== undefined) enviar("S" + c.s);
+    }, 2200);
+  } catch (e) {
+    porta = null;
+    status("Falha ao conectar. Feche o Monitor Serial da IDE e tente de novo.", false);
+  }
+}
+async function lerLinhas() {
+  const dec = new TextDecoderStream();
+  porta.readable.pipeTo(dec.writable);
+  const leitor = dec.readable.getReader();
+  let buf = "";
+  try {
+    while (true) {
+      const { value, done } = await leitor.read();
+      if (done) break;
+      buf += value;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (l.startsWith("{")) { try { receber(JSON.parse(l)); } catch (e) {} }
+      }
+    }
+  } catch (e) {}
+  porta = null; escritor = null; status("Desconectado", false);
+}
+async function desconectar() {
+  try { await escritor?.close(); await porta?.close(); } catch (e) {}
+  porta = null; escritor = null; status("Desconectado", false);
+}
+$("btnConectar").onclick = () => porta ? desconectar() : (pararDemo(), conectar());
+
+/* ----- demonstração ----- */
+function comandoDemo(c) {
+  const t = c[0], v = +c.slice(1);
+  if (t === "P") { const p = PLANTAS[v]; estado.p = v; estado.min = p.min; estado.max = p.max; }
+  if (t === "A") estado.a = v;
+  if (t === "S") { estado.s = v; if (!v) estado.b = 0; }
+  if (t === "B" && estado.s) estado.b = v;
+  desenhar();
+}
+function iniciarDemo() {
+  historico.length = 0;
+  estado = { u: 55, s: 1, b: 0, a: 1, p: 2, min: 45, max: 70, prox: 0, raw: 400 };
+  status("Demonstração (dados simulados)", true);
+  demo = setInterval(() => {
+    if (!estado.s) { receber({ u: estado.u, b: 0 }); return; }
+    let u = estado.u + (estado.b ? 4 : -0.8);
+    if (estado.a && !estado.b && u < estado.min) estado.b = 1;
+    if (estado.b && estado.a && u >= estado.max) estado.b = 0;
+    u = Math.max(0, Math.min(100, u));
+    receber({ u: Math.round(u), b: estado.b, raw: Math.round(620 - u * 3.6) });
+  }, 1000);
+}
+function pararDemo() { clearInterval(demo); demo = null; }
+$("btnDemo").onclick = () => { if (demo) { pararDemo(); status("Desconectado", false); } else iniciarDemo(); };
+
+if (!("serial" in navigator)) $("avisoNavegador").hidden = false;
+desenhar();
+</script>
+</body>
+</html>
